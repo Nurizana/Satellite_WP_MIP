@@ -1,1 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pilot Satellite GIS Web</title>
+    
+    <!-- Include Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            height: 100%;
+            font-family: Arial, sans-serif;
+        }
+        
+        /* Map container */
+        #map {
+            width: 100%;
+            height: 100vh;
+            z-index: 1;
+        }
 
+        /* Control Panel matching image_a7f772.png */
+        #control-panel {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            width: 300px;
+            max-height: 90vh;
+            background: white;
+            border: 2px solid #ccc;
+            z-index: 1000;
+            overflow-y: auto;
+            padding: 10px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+        }
+
+        /* 4-Column Grid for the buttons */
+        .grid-container {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 5px;
+        }
+
+        /* Button Styling */
+        .layer-btn {
+            background-color: lightyellow; /* Default color */
+            border: 1px solid #999;
+            padding: 10px 5px;
+            text-align: center;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background-color 0.3s;
+        }
+
+        /* Active Button Styling (Apple Green) */
+        .layer-btn.active {
+            background-color: #8db600; /* Apple Green */
+            color: white;
+            border-color: #555;
+        }
+
+        .layer-btn:hover {
+            opacity: 0.8;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Map Div -->
+    <div id="map"></div>
+
+    <!-- Control Panel Div -->
+    <div id="control-panel">
+        <h4 style="margin-top: 0; text-align: center;">Satellite Layers</h4>
+        <div class="grid-container" id="button-grid">
+            <!-- Buttons will be generated here by JavaScript -->
+        </div>
+    </div>
+
+    <!-- Include Leaflet JavaScript -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+    <script>
+        // 1. Initialize the Map
+        // Starting coordinates and zoom level (Adjust these to center your specific data)
+        var map = L.map('map').setView([10.0, 110.0], 5);
+
+        // 2. Add ESRI Blue Ocean Basemap
+        L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Ocean/World_Ocean_Base/MapServer/tile/{z}/{y}/{x}', {
+            attribution: 'Tiles &copy; Esri &mdash; Sources: GEBCO, NOAA, CHS, OSU, UNH, CSUMB, National Geographic, DeLorme, NAVTEQ, and Esri',
+            maxZoom: 13
+        }).addTo(map);
+
+        // 3. Add ESRI Blue Ocean Labels (Reference Layer)
+        L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Ocean/World_Ocean_Reference/MapServer/tile/{z}/{y}/{x}', {
+            maxZoom: 13,
+            pane: 'markerPane' // Puts labels above the satellite image overlays
+        }).addTo(map);
+
+        // 4. Set Image Bounds for the Satellite Images
+        // IMPORTANT: Change these coordinates to the exact [South, West] and [North, East] bounds of your images
+        var imageBounds = [[0.0, 100.0], [20.0, 120.0]];
+
+        // Store active layers to toggle them on and off
+        var activeLayers = {};
+        
+        // Base URL for GitHub raw content
+        // Points to Nurizana/Satellite_WP_MIP/main/Data/
+        var baseUrl = "https://raw.githubusercontent.com/Nurizana/Satellite_WP_MIP/main/Data/map_timestep_";
+
+        // 5. Generate Buttons for 124 files (000 to 123)
+        var grid = document.getElementById('button-grid');
+
+        for (let i = 0; i < 124; i++) {
+            // Pad the number with leading zeros (e.g., 0 -> "000", 12 -> "012")
+            let paddedNum = i.toString().padStart(3, '0');
+            
+            // Create button element
+            let btn = document.createElement('div');
+            btn.className = 'layer-btn';
+            btn.innerHTML = paddedNum;
+            btn.id = 'btn-' + paddedNum;
+
+            // Add Click Event Listener
+            btn.addEventListener('click', function() {
+                var layerId = paddedNum;
+                var imageUrl = baseUrl + layerId + ".png";
+
+                // If layer is already active, remove it (Toggle OFF)
+                if (activeLayers[layerId]) {
+                    map.removeLayer(activeLayers[layerId]);
+                    delete activeLayers[layerId];
+                    btn.classList.remove('active'); // Reverts to light yellow
+                } 
+                // If layer is not active, add it (Toggle ON)
+                else {
+                    var imageOverlay = L.imageOverlay(imageUrl, imageBounds).addTo(map);
+                    activeLayers[layerId] = imageOverlay;
+                    btn.classList.add('active'); // Changes to apple green
+                }
+            });
+
+            // Add button to the grid
+            grid.appendChild(btn);
+        }
+    </script>
+</body>
+</html>
