@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Pilot Satellite GIS Web</title>
+    <title>Pilot Satellite GIS Web - GeoTIFF Version</title>
     
     <!-- Include Leaflet CSS -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
@@ -28,21 +28,40 @@
             top: 10px;
             left: 50%;
             transform: translateX(-50%);
-            background: rgba(255, 255, 255, 0.9);
+            background: rgba(255, 255, 255, 0.95);
             border: 2px solid #ccc;
-            padding: 10px;
+            padding: 10px 15px;
             z-index: 1000;
             box-shadow: 0 4px 6px rgba(0,0,0,0.3);
             text-align: center;
             border-radius: 5px;
         }
 
-        /* Control Panel (Made Smaller) */
+        .legend-gradient {
+            /* Viridis color scale representation */
+            background: linear-gradient(to right, #440154, #3b528b, #21918c, #5ec962, #fde725);
+            height: 15px;
+            width: 250px;
+            margin: 5px auto;
+            border: 1px solid #666;
+        }
+
+        .legend-labels {
+            display: flex;
+            justify-content: space-between;
+            width: 250px;
+            margin: 0 auto;
+            font-size: 11px;
+            color: #333;
+            font-weight: bold;
+        }
+
+        /* Control Panel */
         #control-panel {
             position: absolute;
             top: 20px;
             right: 20px;
-            width: 180px; /* Reduced from 300px */
+            width: 180px;
             max-height: 90vh;
             background: white;
             border: 2px solid #ccc;
@@ -66,15 +85,15 @@
             gap: 3px;
         }
 
-        /* Button Styling (Made Smaller) */
+        /* Button Styling */
         .layer-btn {
             background-color: lightyellow; 
             border: 1px solid #999;
-            padding: 5px 2px; /* Reduced padding */
+            padding: 5px 2px;
             text-align: center;
             cursor: pointer;
-            font-size: 11px; /* Reduced font size */
-            transition: background-color 0.3s;
+            font-size: 11px;
+            transition: background-color 0.3s, opacity 0.3s;
         }
 
         .layer-btn.active {
@@ -87,10 +106,9 @@
             opacity: 0.8;
         }
         
-        /* Optional: Attempt to blend the white background. 
-           (Note: Best practice is generating transparent images as advised above) */
-        .leaflet-image-layer {
-            mix-blend-mode: multiply; /* Helps hide white backgrounds, but darkens colors */
+        .loading {
+            opacity: 0.5;
+            cursor: wait;
         }
     </style>
 </head>
@@ -101,11 +119,15 @@
 
     <!-- Legend Panel at Top -->
     <div id="legend-panel">
-        <strong style="font-size: 14px; display: block; margin-bottom: 5px;">Precipitation Legend</strong>
-        <!-- Replace 'legend.png' with the URL of your isolated legend image -->
-        <!-- Example text placeholder if image is missing -->
-        <span style="font-size: 12px; color: #666;">(Blue: Low | Yellow: Med | Red: High)</span>
-        <!-- <img src="URL_TO_YOUR_SEPARATE_LEGEND_IMAGE.png" alt="Legend" style="height: 30px;"> -->
+        <strong style="font-size: 14px; display: block;">Total Precipitation (kg m⁻²)</strong>
+        <div class="legend-gradient"></div>
+        <div class="legend-labels">
+            <span>0</span>
+            <span>35</span>
+            <span>70</span>
+            <span>105</span>
+            <span>140</span>
+        </div>
     </div>
 
     <!-- Control Panel Div -->
@@ -116,12 +138,15 @@
         </div>
     </div>
 
-    <!-- Include Leaflet JavaScript -->
+    <!-- Include Leaflet, GeoRaster, and Chroma JavaScript -->
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://unpkg.com/georaster"></script>
+    <script src="https://unpkg.com/georaster-layer-for-leaflet"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/chroma-js/2.4.2/chroma.min.js"></script>
 
     <script>
         // Initialize Map
-        var map = L.map('map').setView([0, 100.0], 4);
+        var map = L.map('map').setView([-10, 140.0], 3);
 
         // Add ESRI Blue Ocean Basemap
         L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Ocean/World_Ocean_Base/MapServer/tile/{z}/{y}/{x}', {
@@ -135,10 +160,13 @@
             pane: 'markerPane' 
         }).addTo(map);
 
-        // Set Image Bounds: 35S to 35N, 70E to 40W (mapped to 320 for wrap-around)
-        var imageBounds = [[-35.0, 70.0], [35.0, 320.0]];
+        // Initialize Variables
         var activeLayers = {};
-        var baseUrl = "https://raw.githubusercontent.com/Nurizana/Satellite_WP_MIP/main/Data/map_timestep_";
+        // Pointing to the new 'Data2' folder containing the .tif files
+        var baseUrl = "https://raw.githubusercontent.com/Nurizana/Satellite_WP_MIP/main/Data2/map_timestep_";
+        
+        // Setup Viridis color scale from 0 to 140
+        var colorScale = chroma.scale('viridis').domain([0, 140]);
 
         // Generate Buttons
         var grid = document.getElementById('button-grid');
@@ -152,18 +180,56 @@
 
             btn.addEventListener('click', function() {
                 var layerId = paddedNum;
-                var imageUrl = baseUrl + layerId + ".png";
+                var tiffUrl = baseUrl + layerId + ".tif";
 
                 if (activeLayers[layerId]) {
+                    // Turn layer off
                     map.removeLayer(activeLayers[layerId]);
                     delete activeLayers[layerId];
                     btn.classList.remove('active'); 
                 } 
                 else {
-                    // Added opacity to 0.7 to blend slightly better until you generate transparent images
-                    var imageOverlay = L.imageOverlay(imageUrl, imageBounds, {opacity: 0.7}).addTo(map);
-                    activeLayers[layerId] = imageOverlay;
-                    btn.classList.add('active'); 
+                    // Turn layer on & fetch GeoTIFF
+                    btn.classList.add('loading');
+                    btn.innerHTML = '...';
+
+                    fetch(tiffUrl)
+                        .then(response => response.arrayBuffer())
+                        .then(arrayBuffer => {
+                            parseGeoraster(arrayBuffer).then(georaster => {
+                                
+                                var layer = new GeoRasterLayer({
+                                    georaster: georaster,
+                                    opacity: 0.8,
+                                    resolution: 256, // Lower resolution for better web performance
+                                    pixelValuesToColorFn: function(pixelValues) {
+                                        var val = pixelValues[0];
+                                        
+                                        // Ignore empty pixels or 0 values to make background transparent
+                                        if (val === undefined || val === null || isNaN(val) || val <= 0.1) {
+                                            return null;
+                                        }
+                                        
+                                        // Apply the viridis color scale to the value
+                                        return colorScale(val).hex();
+                                    }
+                                });
+
+                                layer.addTo(map);
+                                activeLayers[layerId] = layer;
+                                
+                                // Update button UI
+                                btn.classList.remove('loading');
+                                btn.classList.add('active'); 
+                                btn.innerHTML = layerId;
+                            });
+                        })
+                        .catch(error => {
+                            console.error('Error fetching the GeoTIFF:', error);
+                            btn.classList.remove('loading');
+                            btn.innerHTML = layerId;
+                            alert("Failed to load map_timestep_" + layerId + ".tif");
+                        });
                 }
             });
 
