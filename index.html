@@ -17,21 +17,25 @@
             display: flex;
             flex-direction: column;
             overflow: hidden;
+            /* Prevent text selection */
+            user-select: none; 
+            -webkit-user-select: none;
+            -moz-user-select: none;
+            -ms-user-select: none;
         }
         
         #map {
             width: 100%;
-            flex-grow: 1; /* Takes up available space */
+            flex-grow: 1;
             z-index: 1;
         }
 
-        /* Chart Container at the Bottom */
         #chart-container {
             width: 100%;
-            height: 30vh; /* Takes up 30% of the screen height */
+            height: 30vh;
             background: #fdfdfd;
             border-top: 2px solid #ccc;
-            display: none; /* Hidden until a station is clicked */
+            display: none;
             padding: 10px;
             box-sizing: border-box;
             z-index: 1000;
@@ -41,7 +45,6 @@
             max-height: 100%;
         }
 
-        /* Top Legend Panel */
         #legend-panel {
             position: absolute;
             top: 10px;
@@ -74,7 +77,6 @@
             font-weight: bold;
         }
 
-        /* Control Panel */
         #control-panel {
             position: absolute;
             top: 20px;
@@ -89,7 +91,6 @@
             box-shadow: 0 4px 6px rgba(0,0,0,0.3);
         }
 
-        /* Animation Controls */
         #anim-panel {
             padding: 10px;
             border-bottom: 2px solid #eee;
@@ -107,14 +108,10 @@
             border-radius: 3px;
         }
         
-        #anim-panel button:hover {
-            background: #eee;
-        }
-        
+        #anim-panel button:hover { background: #eee; }
         #btn-play { background: #d4edda !important; font-weight: bold;}
         #btn-stop { background: #f8d7da !important; font-weight: bold;}
 
-        /* Layer Grid Panel */
         #layer-panel {
             padding: 10px;
             overflow-y: auto;
@@ -133,7 +130,6 @@
             gap: 3px;
         }
 
-        /* Button Styling */
         .layer-btn {
             background-color: lightyellow; 
             border: 1px solid #999;
@@ -156,19 +152,25 @@
             opacity: 0.8;
             cursor: wait;
         }
+
+        /* SECURITY: Completely blank out the page if the user tries to print */
+        @media print {
+            html, body {
+                display: none !important;
+                background-color: white !important;
+            }
+        }
     </style>
 </head>
-<body>
+<!-- SECURITY: Disable right click at the body level -->
+<body oncontextmenu="return false;">
 
-    <!-- Map Div -->
     <div id="map"></div>
 
-    <!-- Chart Container for Timeline -->
     <div id="chart-container">
         <canvas id="rainfallChart"></canvas>
     </div>
 
-    <!-- Legend Panel -->
     <div id="legend-panel">
         <strong style="font-size: 14px; display: block;">Total Precipitation (kg m⁻²)</strong>
         <div class="legend-gradient"></div>
@@ -181,7 +183,6 @@
         </div>
     </div>
 
-    <!-- Control Panel -->
     <div id="control-panel">
         <div id="anim-panel">
             <div style="font-size: 13px; margin-bottom: 5px; font-weight: bold;">Animation Controls</div>
@@ -191,24 +192,68 @@
         </div>
         <div id="layer-panel">
             <h4>Satellite Layers</h4>
-            <div class="grid-container" id="button-grid">
-                <!-- Buttons generated here -->
-            </div>
+            <div class="grid-container" id="button-grid"></div>
         </div>
     </div>
 
-    <!-- Libraries -->
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://unpkg.com/georaster"></script>
     <script src="https://unpkg.com/georaster-layer-for-leaflet"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/chroma-js/2.4.2/chroma.min.js"></script>
-    <!-- Add PapaParse for CSV parsing -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
-    <!-- Add Chart.js for Graphing -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
     <script>
-        // Initialize Map
+        // ==========================================
+        // FRONTEND SECURITY MEASURES
+        // ==========================================
+
+        // 1. Prevent Right Click (Context Menu)
+        document.addEventListener('contextmenu', event => event.preventDefault());
+
+        // 2. Prevent Keyboard Shortcuts (F12, Ctrl+U, Ctrl+Shift+I, Ctrl+S, Ctrl+P)
+        document.addEventListener('keydown', function(e) {
+            // F12
+            if (e.keyCode === 123) {
+                e.preventDefault();
+                return false;
+            }
+            // Ctrl+Shift+I (DevTools), Ctrl+Shift+J, Ctrl+Shift+C
+            if (e.ctrlKey && e.shiftKey && (e.keyCode === 73 || e.keyCode === 74 || e.keyCode === 67)) {
+                e.preventDefault();
+                return false;
+            }
+            // Ctrl+U (View Source), Ctrl+S (Save), Ctrl+P (Print)
+            if (e.ctrlKey && (e.keyCode === 85 || e.keyCode === 83 || e.keyCode === 80)) {
+                e.preventDefault();
+                return false;
+            }
+        });
+
+        // 3. Print Screen Obfuscation (Attempts to clear clipboard and blank screen temporarily)
+        document.addEventListener('keyup', function(e) {
+            if (e.key === 'PrintScreen' || e.keyCode === 44) {
+                navigator.clipboard.writeText(''); // Attempt to clear clipboard
+                document.body.style.display = 'none'; // Blank screen
+                setTimeout(() => {
+                    document.body.style.display = ''; // Restore screen after a short delay
+                }, 1500);
+            }
+        });
+
+        // 4. Prevent Drag and Drop (stops pulling images/data out)
+        document.addEventListener('dragstart', e => e.preventDefault());
+
+        // 5. Override Copy event
+        document.addEventListener('copy', function(e) {
+            e.clipboardData.setData('text/plain', 'Content protected.');
+            e.preventDefault();
+        });
+
+        // ==========================================
+        // MAP & DATA LOGIC
+        // ==========================================
+
         var map = L.map('map').setView([4.0, 108.0], 5);
 
         L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Ocean/World_Ocean_Base/MapServer/tile/{z}/{y}/{x}', {
@@ -221,7 +266,6 @@
             pane: 'markerPane' 
         }).addTo(map);
 
-        // Core Variables
         var baseUrl = "https://raw.githubusercontent.com/Nurizana/Satellite_WP_MIP/main/Data2/map_timestep_";
         var csvUrl = "https://raw.githubusercontent.com/Nurizana/Satellite_WP_MIP/main/Data3/Hourly_PMSS_202401_WCoordinate.csv";
         var colorScale = chroma.scale('viridis').domain([0, 140]);
@@ -234,7 +278,6 @@
         var animTimeout = null;
         var chartInstance = null;
 
-        // --- Core Load Function for GeoTIFF ---
         function loadAndShowLayer(layerId, btn, isAnimContext = false, callback = null) {
             if (layerCache[layerId]) {
                 if (!map.hasLayer(layerCache[layerId])) {
@@ -279,7 +322,6 @@
                 });
         }
 
-        // --- Animation Functions ---
         function stepAnimation() {
             if (!isPlaying) return;
             if (currentFrame >= totalFrames) {
@@ -337,7 +379,6 @@
         document.getElementById('btn-stop').addEventListener('click', stopAnimation);
         document.getElementById('btn-reset').addEventListener('click', resetAnimation);
 
-        // --- Generate Grid Buttons ---
         var grid = document.getElementById('button-grid');
         for (let i = 0; i < totalFrames; i++) {
             let paddedNum = i.toString().padStart(3, '0');
@@ -359,19 +400,17 @@
             grid.appendChild(btn);
         }
 
-        // --- CSV Parsing and Timeline Graph Logic ---
         Papa.parse(csvUrl, {
             download: true,
-            header: true, // Use first row as header keys
+            header: true,
             skipEmptyLines: true,
             complete: function(results) {
                 let data = results.data;
                 let stations = {};
 
-                // Group data by Station Name
                 data.forEach(row => {
                     let name = row['STATION NAME'];
-                    if (!name) return; // Skip invalid rows
+                    if (!name) return;
 
                     if (!stations[name]) {
                         stations[name] = {
@@ -381,26 +420,21 @@
                         };
                     }
                     
-                    // Format time: YYYY-MM-DD HH:00
                     let timeStr = `${row['YEAR']}-${row['MTH'].padStart(2,'0')}-${row['DAY'].padStart(2,'0')} ${row['HOUR'].padStart(2,'0')}:00`;
                     let rainVal = parseFloat(row['RAIN']);
-                    // If RAIN is missing or NaN, set to 0 or null
                     rainVal = isNaN(rainVal) ? 0 : rainVal;
                     
                     stations[name].records.push({ time: timeStr, rain: rainVal });
                 });
 
-                // Plot markers for each station
                 for (let stn in stations) {
                     let stnData = stations[stn];
                     
-                    // Skip if lat/lon is invalid
                     if (isNaN(stnData.lat) || isNaN(stnData.lon)) continue; 
 
                     let marker = L.marker([stnData.lat, stnData.lon]).addTo(map);
-                    marker.bindTooltip(stn); // Hover name
+                    marker.bindTooltip(stn); 
 
-                    // On click, generate chart
                     marker.on('click', function() {
                         generateChart(stn, stnData.records);
                     });
@@ -408,23 +442,20 @@
             }
         });
 
-        // Generate the Chart.js Graph
         function generateChart(stationName, records) {
-            // Sort records by time to ensure timeline flows correctly
             records.sort((a, b) => new Date(a.time) - new Date(b.time));
 
             let labels = records.map(r => r.time);
             let rainData = records.map(r => r.rain);
 
-            // Unhide chart container and trigger map resize
             let container = document.getElementById('chart-container');
             if(container.style.display !== 'block') {
                 container.style.display = 'block';
-                map.invalidateSize(); // Fix map rendering after size change
+                map.invalidateSize();
             }
 
             if (chartInstance) {
-                chartInstance.destroy(); // Remove old chart before drawing new one
+                chartInstance.destroy(); 
             }
 
             let ctx = document.getElementById('rainfallChart').getContext('2d');
@@ -452,7 +483,7 @@
                     scales: {
                         x: {
                             title: { display: true, text: 'Time' },
-                            ticks: { maxTicksLimit: 12 } // Prevent crowding on X axis
+                            ticks: { maxTicksLimit: 12 }
                         },
                         y: {
                             title: { display: true, text: 'Rainfall (mm)' },
