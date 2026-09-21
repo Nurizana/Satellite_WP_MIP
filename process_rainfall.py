@@ -13,7 +13,8 @@ warnings.filterwarnings('ignore')
 
 # 1. Define Paths
 csv_path = 'Data3/Hourly_PMSS_202401_WCoordinate.csv'
-shapefile_zip = 'Data4/Malaysia_WGS1984.zip'
+# Updated to point directly to the extracted .shp file
+shapefile_path = 'Data4/Malaysia_WGS1984/Malaysia.shp'
 output_dir = 'Data2'
 
 os.makedirs(output_dir, exist_ok=True)
@@ -26,8 +27,8 @@ df = pd.read_csv(csv_path)
 df['RAIN'] = pd.to_numeric(df['RAIN'], errors='coerce')
 df = df.dropna(subset=['RAIN', 'LATITUDE', 'LONGITUDE'])
 
-# Load Malaysia boundary mask
-malaysia_gdf = gpd.read_file(f'zip://{shapefile_zip}')
+# Load Malaysia boundary mask directly from the unzipped folder
+malaysia_gdf = gpd.read_file(shapefile_path)
 
 # 3. Setup Interpolation Grid parameters
 lon_min, lon_max = 99.0, 120.0
