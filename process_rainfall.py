@@ -11,60 +11,63 @@ import warnings
 # Suppress warnings for cleaner output
 warnings.filterwarnings('ignore')
 
-# 1. Define Paths based on repository structure
+# 1. Define Paths
 csv_path = 'Data3/Hourly_PMSS_202401_WCoordinate.csv'
 shapefile_zip = 'Data4/Malaysia_WGS1984.zip'
 output_dir = 'Data2'
 
-# Ensure output directory exists
 os.makedirs(output_dir, exist_ok=True)
 
 # 2. Load the Data
 print("Loading CSV and Shapefile...")
 df = pd.read_csv(csv_path)
 
-# Extract coordinates (assuming columns are named 'Longitude' and 'Latitude')
-# Adjust column names if they differ in your CSV
-points = df[['Longitude', 'Latitude']].values
+# Convert RAIN to numeric (forces any text like "Trace" to NaN), then drop invalid rows
+df['RAIN'] = pd.to_numeric(df['RAIN'], errors='coerce')
+df = df.dropna(subset=['RAIN', 'LATITUDE', 'LONGITUDE'])
 
-# Load Malaysia boundary mask directly from the zip file
+# Load Malaysia boundary mask
 malaysia_gdf = gpd.read_file(f'zip://{shapefile_zip}')
 
-# 3. Setup Interpolation Grid parameters for Malaysia
-# Bounding box roughly: Lon 99°E to 120°E, Lat 0.5°N to 8°N
+# 3. Setup Interpolation Grid parameters
 lon_min, lon_max = 99.0, 120.0
 lat_min, lat_max = 0.5, 8.5
-resolution = 0.05 # ~5km resolution, adjust for finer/coarser output
+resolution = 0.05 
 
-# Create meshgrid for interpolation
 grid_lon, grid_lat = np.meshgrid(
     np.arange(lon_min, lon_max, resolution),
-    np.arange(lat_max, lat_min, -resolution) # Top to bottom for raster
+    np.arange(lat_max, lat_min, -resolution) 
 )
 
-# 4. Identify Hourly Columns
-# Assuming all columns except spatial/ID columns are hourly rainfall data
-exclude_cols = ['Station', 'Longitude', 'Latitude', 'Station_ID']
-hourly_cols = [c for c in df.columns if c not in exclude_cols]
+# 4. Group by Time (DAY and HOUR) and process each timestep
+time_groups = df.groupby(['DAY', 'HOUR'])
+frame_index = 0
+total_required_frames = 124
 
-print(f"Found {len(hourly_cols)} hourly timesteps to process.")
-
-# 5. Process each timestep
-for i, col in enumerate(hourly_cols):
-    print(f"Processing frame {i:03d} for column: {col}...")
-    values = df[col].values
+for (day, hour), group in time_groups:
+    if frame_index >= total_required_frames:
+        break
+        
+    print(f"Processing frame {frame_index:03d} (Day {int(day)}, Hour {int(hour)})...")
     
-    # Interpolate using Linear (or 'cubic', 'nearest')
+    # Extract coordinates and rainfall for this specific hour
+    points = group[['LONGITUDE', 'LATITUDE']].values
+    values = group['RAIN'].values
+    
+    # Skip if there aren't enough points to interpolate
+    if len(points) < 3:
+        print("Skipping - insufficient data points.")
+        frame_index += 1
+        continue
+
+    # Interpolate
     grid_z = griddata(points, values, (grid_lon, grid_lat), method='linear')
-    
-    # Fill NaN values (outside interpolation hull) with 0 or a nodata value
     grid_z = np.nan_to_num(grid_z, nan=0.0)
     
-    # Define affine transform for GeoTIFF
     transform = from_origin(lon_min, lat_max, resolution, resolution)
     
-    # Create a temporary unmasked GeoTIFF
-    temp_tif = f'{output_dir}/temp_{i:03d}.tif'
+    # Create temporary GeoTIFF
+    temp_tif = f'{output_dir}/temp_{frame_index:03d}.tif'
     with rasterio.open(
         temp_tif, 'w', driver='GTiff',
         height=grid_z.shape[0], width=grid_z.shape[1],
@@ -73,7 +76,7 @@ for i, col in enumerate(hourly_cols):
     ) as dst:
         dst.write(grid_z, 1)
         
-    # 6. Mask the GeoTIFF with the Malaysia Shapefile
+    # Mask with Malaysia Shapefile
     with rasterio.open(temp_tif) as src:
         out_image, out_transform = mask(src, malaysia_gdf.geometry, crop=True, nodata=0.0)
         out_meta = src.meta.copy()
@@ -85,12 +88,12 @@ for i, col in enumerate(hourly_cols):
         "transform": out_transform
     })
     
-    # Save the final masked GeoTIFF matching the HTML nomenclature
-    final_tif = f'{output_dir}/map_timestep_{i:03d}.tif'
+    # Save final masked file
+    final_tif = f'{output_dir}/map_timestep_{frame_index:03d}.tif'
     with rasterio.open(final_tif, "w", **out_meta) as dest:
         dest.write(out_image)
         
-    # Cleanup temporary file
     os.remove(temp_tif)
+    frame_index += 1
 
 print("Interpolation and masking complete! All GeoTIFFs saved to Data2/.")
