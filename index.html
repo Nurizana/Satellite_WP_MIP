@@ -421,8 +421,14 @@
                     }
                     
                     let timeStr = `${row['YEAR']}-${row['MTH'].padStart(2,'0')}-${row['DAY'].padStart(2,'0')} ${row['HOUR'].padStart(2,'0')}:00`;
+                    
+                    // Modified to handle defective -99.9 values
                     let rainVal = parseFloat(row['RAIN']);
-                    rainVal = isNaN(rainVal) ? 0 : rainVal;
+                    if (rainVal === -99.9) {
+                        rainVal = null; // Set to null so Chart.js breaks the line
+                    } else {
+                        rainVal = isNaN(rainVal) ? 0 : rainVal;
+                    }
                     
                     stations[name].records.push({ time: timeStr, rain: rainVal });
                 });
@@ -466,6 +472,7 @@
                     datasets: [{
                         label: `Hourly Rainfall (mm) - ${stationName}`,
                         data: rainData,
+                        spanGaps: false, // Ensures a blank gap is drawn for null values
                         borderColor: '#21918c',
                         backgroundColor: 'rgba(33, 145, 140, 0.2)',
                         borderWidth: 2,
