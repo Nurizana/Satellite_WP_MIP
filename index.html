@@ -126,11 +126,15 @@
         #btn-play { background: #d4edda !important; font-weight: bold;}
         #btn-stop { background: #f8d7da !important; font-weight: bold;}
         
-        /* Specific styling for the station toggle button */
-        #btn-toggle-stations {
-            background: #e2e3e5;
+        /* Specific styling for toggle buttons */
+        .btn-toggle {
             width: 90%;
             font-weight: bold;
+            margin-bottom: 5px !important;
+        }
+        
+        #btn-toggle-stations {
+            background: #e2e3e5;
         }
 
         #layer-panel {
@@ -214,10 +218,11 @@
             <button id="btn-reset">Reset</button>
         </div>
         
-        <!-- New Station Control Section -->
+        <!-- Consolidated Map Overlays Section -->
         <div class="control-section">
-            <div style="font-size: 13px; margin-bottom: 5px; font-weight: bold;">Station Data</div>
-            <button id="btn-toggle-stations">Hide Stations</button>
+            <div style="font-size: 13px; margin-bottom: 5px; font-weight: bold;">Map Overlays</div>
+            <button id="btn-toggle-stations" class="btn-toggle">Hide Stations</button>
+            <button id="btn-toggle-grid" class="btn-toggle">Show 5° Grid</button>
         </div>
 
         <div id="layer-panel">
@@ -277,8 +282,21 @@
             pane: 'markerPane' 
         }).addTo(map);
 
-        // Create a LayerGroup for the stations so we can toggle them on/off easily
+        // 1. Stations LayerGroup
         var stationsLayerGroup = L.layerGroup().addTo(map);
+
+        // 2. 5-Degree Grid LayerGroup (Not added to map by default)
+        var gridLayerGroup = L.layerGroup();
+        var gridStyle = { color: '#333', weight: 1, opacity: 0.4, dashArray: '4, 4' };
+
+        // Generate Longitude lines (Meridians) every 5 degrees
+        for (let lon = -180; lon <= 180; lon += 5) {
+            L.polyline([[ -90, lon ], [ 90, lon ]], gridStyle).addTo(gridLayerGroup);
+        }
+        // Generate Latitude lines (Parallels) every 5 degrees
+        for (let lat = -90; lat <= 90; lat += 5) {
+            L.polyline([[ lat, -180 ], [ lat, 180 ]], gridStyle).addTo(gridLayerGroup);
+        }
 
         var baseUrl = "https://raw.githubusercontent.com/Nurizana/Satellite_WP_MIP/main/Data2/map_timestep_";
         var csvUrl = "https://raw.githubusercontent.com/Nurizana/Satellite_WP_MIP/main/Data3/Hourly_PMSS_202401_WCoordinate.csv";
@@ -287,7 +305,7 @@
         var totalFrames = 124;
 
         // Satellite Time settings
-        // UPDATED: Frame 0 starts at 2024-01-01 06:00 UTC ("Z")
+        // Frame 0 starts at 2024-01-01 06:00 UTC ("Z")
         var satelliteBaseDate = new Date("2024-01-01T06:00:00Z");
 
         var isPlaying = false;
@@ -298,11 +316,10 @@
 
         // Function to update the Time Display box
         function updateTimeDisplay(frameIndex) {
-            // UPDATED: Multiply frameIndex by 6 hours instead of 1
+            // Multiply frameIndex by 6 hours
             var frameDate = new Date(satelliteBaseDate.getTime() + (frameIndex * 6 * 60 * 60 * 1000));
             
-            // UPDATED: Using getUTC methods to ensure time displays exactly as Z (UTC) time 
-            // without being shifted by the local timezone of the user's computer.
+            // Using getUTC methods to ensure time displays exactly as Z (UTC) time 
             var year = frameDate.getUTCFullYear();
             var month = String(frameDate.getUTCMonth() + 1).padStart(2, '0');
             var day = String(frameDate.getUTCDate()).padStart(2, '0');
@@ -416,7 +433,7 @@
         document.getElementById('btn-stop').addEventListener('click', stopAnimation);
         document.getElementById('btn-reset').addEventListener('click', resetAnimation);
 
-        // Logic for the new Station Toggle Button
+        // Logic for the Station Toggle Button
         var btnToggleStations = document.getElementById('btn-toggle-stations');
         btnToggleStations.addEventListener('click', function() {
             if (map.hasLayer(stationsLayerGroup)) {
@@ -427,6 +444,20 @@
                 map.addLayer(stationsLayerGroup);
                 btnToggleStations.innerText = "Hide Stations";
                 btnToggleStations.style.background = "#e2e3e5";
+            }
+        });
+
+        // Logic for the Grid Toggle Button
+        var btnToggleGrid = document.getElementById('btn-toggle-grid');
+        btnToggleGrid.addEventListener('click', function() {
+            if (map.hasLayer(gridLayerGroup)) {
+                map.removeLayer(gridLayerGroup);
+                btnToggleGrid.innerText = "Show 5° Grid";
+                btnToggleGrid.style.background = "#fff";
+            } else {
+                map.addLayer(gridLayerGroup);
+                btnToggleGrid.innerText = "Hide 5° Grid";
+                btnToggleGrid.style.background = "#e2e3e5";
             }
         });
 
@@ -488,7 +519,6 @@
                     
                     if (isNaN(stnData.lat) || isNaN(stnData.lon)) continue; 
 
-                    // Add markers to the stationsLayerGroup instead of the map directly
                     let marker = L.marker([stnData.lat, stnData.lon]).addTo(stationsLayerGroup);
                     marker.bindTooltip(stn); 
 
@@ -499,7 +529,6 @@
             }
         });
 
-        // Convert Hourly records into 6-Hourly Accumulated windows
         function aggregate6Hourly(records) {
             let accumulated = [];
             let currentWindowStart = null;
