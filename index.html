@@ -287,8 +287,8 @@
         var totalFrames = 124;
 
         // Satellite Time settings
-        // ASSUMPTION: Frame 0 starts at 2024-01-01 00:00 and moves hourly
-        var satelliteBaseDate = new Date("2024-01-01T00:00:00");
+        // UPDATED: Frame 0 starts at 2024-01-01 06:00 UTC ("Z")
+        var satelliteBaseDate = new Date("2024-01-01T06:00:00Z");
 
         var isPlaying = false;
         var currentFrame = 0;
@@ -298,14 +298,17 @@
 
         // Function to update the Time Display box
         function updateTimeDisplay(frameIndex) {
-            var frameDate = new Date(satelliteBaseDate.getTime() + frameIndex * 60 * 60 * 1000);
+            // UPDATED: Multiply frameIndex by 6 hours instead of 1
+            var frameDate = new Date(satelliteBaseDate.getTime() + (frameIndex * 6 * 60 * 60 * 1000));
             
-            var year = frameDate.getFullYear();
-            var month = String(frameDate.getMonth() + 1).padStart(2, '0');
-            var day = String(frameDate.getDate()).padStart(2, '0');
-            var hours = String(frameDate.getHours()).padStart(2, '0');
+            // UPDATED: Using getUTC methods to ensure time displays exactly as Z (UTC) time 
+            // without being shifted by the local timezone of the user's computer.
+            var year = frameDate.getUTCFullYear();
+            var month = String(frameDate.getUTCMonth() + 1).padStart(2, '0');
+            var day = String(frameDate.getUTCDate()).padStart(2, '0');
+            var hours = String(frameDate.getUTCHours()).padStart(2, '0');
             
-            var timeString = `${year}-${month}-${day} ${hours}:00`;
+            var timeString = `${year}-${month}-${day} ${hours}:00Z`;
             document.getElementById('time-display').innerText = "Valid Time: " + timeString;
         }
 
