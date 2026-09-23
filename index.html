@@ -45,6 +45,21 @@
             max-height: 100%;
         }
 
+        #time-display {
+            position: absolute;
+            top: 10px;
+            left: 20px;
+            background: rgba(255, 255, 255, 0.95);
+            border: 2px solid #ccc;
+            padding: 10px 15px;
+            z-index: 1000;
+            font-size: 15px;
+            font-weight: bold;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+            border-radius: 5px;
+            color: #333;
+        }
+
         #legend-panel {
             position: absolute;
             top: 10px;
@@ -165,6 +180,8 @@
 <!-- SECURITY: Disable right click at the body level -->
 <body oncontextmenu="return false;">
 
+    <div id="time-display">Valid Time: Select a layer to start</div>
+
     <div id="map"></div>
 
     <div id="chart-container">
@@ -208,43 +225,24 @@
         // FRONTEND SECURITY MEASURES
         // ==========================================
 
-        // 1. Prevent Right Click (Context Menu)
         document.addEventListener('contextmenu', event => event.preventDefault());
 
-        // 2. Prevent Keyboard Shortcuts (F12, Ctrl+U, Ctrl+Shift+I, Ctrl+S, Ctrl+P)
         document.addEventListener('keydown', function(e) {
-            // F12
-            if (e.keyCode === 123) {
-                e.preventDefault();
-                return false;
-            }
-            // Ctrl+Shift+I (DevTools), Ctrl+Shift+J, Ctrl+Shift+C
-            if (e.ctrlKey && e.shiftKey && (e.keyCode === 73 || e.keyCode === 74 || e.keyCode === 67)) {
-                e.preventDefault();
-                return false;
-            }
-            // Ctrl+U (View Source), Ctrl+S (Save), Ctrl+P (Print)
-            if (e.ctrlKey && (e.keyCode === 85 || e.keyCode === 83 || e.keyCode === 80)) {
-                e.preventDefault();
-                return false;
-            }
+            if (e.keyCode === 123) { e.preventDefault(); return false; }
+            if (e.ctrlKey && e.shiftKey && (e.keyCode === 73 || e.keyCode === 74 || e.keyCode === 67)) { e.preventDefault(); return false; }
+            if (e.ctrlKey && (e.keyCode === 85 || e.keyCode === 83 || e.keyCode === 80)) { e.preventDefault(); return false; }
         });
 
-        // 3. Print Screen Obfuscation (Attempts to clear clipboard and blank screen temporarily)
         document.addEventListener('keyup', function(e) {
             if (e.key === 'PrintScreen' || e.keyCode === 44) {
-                navigator.clipboard.writeText(''); // Attempt to clear clipboard
-                document.body.style.display = 'none'; // Blank screen
-                setTimeout(() => {
-                    document.body.style.display = ''; // Restore screen after a short delay
-                }, 1500);
+                navigator.clipboard.writeText(''); 
+                document.body.style.display = 'none'; 
+                setTimeout(() => { document.body.style.display = ''; }, 1500);
             }
         });
 
-        // 4. Prevent Drag and Drop (stops pulling images/data out)
         document.addEventListener('dragstart', e => e.preventDefault());
 
-        // 5. Override Copy event
         document.addEventListener('copy', function(e) {
             e.clipboardData.setData('text/plain', 'Content protected.');
             e.preventDefault();
@@ -272,11 +270,29 @@
         var layerCache = {}; 
         var totalFrames = 124;
 
+        // Satellite Time settings
+        // ASSUMPTION: Frame 0 starts at 2024-01-01 00:00 and moves hourly
+        var satelliteBaseDate = new Date("2024-01-01T00:00:00");
+
         var isPlaying = false;
         var currentFrame = 0;
         var currentlyDisplayedLayerId = null;
         var animTimeout = null;
         var chartInstance = null;
+
+        // Function to update the Time Display box
+        function updateTimeDisplay(frameIndex) {
+            // Add hours (frameIndex) to the base date
+            var frameDate = new Date(satelliteBaseDate.getTime() + frameIndex * 60 * 60 * 1000);
+            
+            var year = frameDate.getFullYear();
+            var month = String(frameDate.getMonth() + 1).padStart(2, '0');
+            var day = String(frameDate.getDate()).padStart(2, '0');
+            var hours = String(frameDate.getHours()).padStart(2, '0');
+            
+            var timeString = `${year}-${month}-${day} ${hours}:00`;
+            document.getElementById('time-display').innerText = "Valid Time: " + timeString;
+        }
 
         function loadAndShowLayer(layerId, btn, isAnimContext = false, callback = null) {
             if (layerCache[layerId]) {
@@ -284,6 +300,7 @@
                     layerCache[layerId].addTo(map);
                     btn.classList.add('active');
                 }
+                updateTimeDisplay(parseInt(layerId));
                 if (callback) callback(layerCache[layerId]);
                 return;
             }
@@ -312,6 +329,7 @@
                     if (!isAnimContext || isPlaying) {
                         layer.addTo(map);
                         btn.classList.add('active');
+                        updateTimeDisplay(parseInt(layerId));
                     }
                     if (callback) callback(layer);
                 })
@@ -373,6 +391,7 @@
             }
             currentlyDisplayedLayerId = null;
             currentFrame = 0;
+            document.getElementById('time-display').innerText = "Valid Time: Select a layer to start";
         }
 
         document.getElementById('btn-play').addEventListener('click', playAnimation);
@@ -425,7 +444,7 @@
                     // Modified to handle defective -99.9 values
                     let rainVal = parseFloat(row['RAIN']);
                     if (rainVal === -99.9) {
-                        rainVal = null; // Set to null so Chart.js breaks the line
+                        rainVal = null; // null values will break the Chart.js line
                     } else {
                         rainVal = isNaN(rainVal) ? 0 : rainVal;
                     }
@@ -448,11 +467,68 @@
             }
         });
 
-        function generateChart(stationName, records) {
-            records.sort((a, b) => new Date(a.time) - new Date(b.time));
+        // Convert Hourly records into 6-Hourly Accumulated windows
+        function aggregate6Hourly(records) {
+            let accumulated = [];
+            let currentWindowStart = null;
+            let currentSum = 0;
+            let hasNullInWindow = false;
 
-            let labels = records.map(r => r.time);
-            let rainData = records.map(r => r.rain);
+            records.forEach(rec => {
+                // Parse date string (treating it as local to avoid timezone drift in formatting)
+                let d = new Date(rec.time.replace(' ', 'T'));
+                
+                // Find the start of the 6-hour window (0, 6, 12, 18)
+                let windowHour = Math.floor(d.getHours() / 6) * 6;
+                let windowStart = new Date(d);
+                windowStart.setHours(windowHour, 0, 0, 0);
+
+                let windowLabel = windowStart.getFullYear() + '-' + 
+                                  String(windowStart.getMonth() + 1).padStart(2, '0') + '-' + 
+                                  String(windowStart.getDate()).padStart(2, '0') + ' ' + 
+                                  String(windowStart.getHours()).padStart(2, '0') + ':00';
+
+                // If moving to a new 6-hr window, push the previous one to our array
+                if (currentWindowStart !== null && currentWindowStart !== windowLabel) {
+                    accumulated.push({
+                        time: currentWindowStart,
+                        rain: hasNullInWindow ? null : parseFloat(currentSum.toFixed(2))
+                    });
+                    
+                    currentSum = 0;
+                    hasNullInWindow = false;
+                }
+                
+                currentWindowStart = windowLabel;
+
+                // Add to sum, or flag the window if data is missing (-99.9/null)
+                if (rec.rain === null) {
+                    hasNullInWindow = true;
+                } else {
+                    currentSum += rec.rain;
+                }
+            });
+
+            // Push the final window
+            if (currentWindowStart !== null) {
+                accumulated.push({
+                    time: currentWindowStart,
+                    rain: hasNullInWindow ? null : parseFloat(currentSum.toFixed(2))
+                });
+            }
+
+            return accumulated;
+        }
+
+        function generateChart(stationName, hourlyRecords) {
+            // Sort original records chronologically just in case
+            hourlyRecords.sort((a, b) => new Date(a.time.replace(' ', 'T')) - new Date(b.time.replace(' ', 'T')));
+            
+            // Process hourly data into 6-hour accumulation
+            let sixHourlyRecords = aggregate6Hourly(hourlyRecords);
+
+            let labels = sixHourlyRecords.map(r => r.time);
+            let rainData = sixHourlyRecords.map(r => r.rain);
 
             let container = document.getElementById('chart-container');
             if(container.style.display !== 'block') {
@@ -466,19 +542,19 @@
 
             let ctx = document.getElementById('rainfallChart').getContext('2d');
             chartInstance = new Chart(ctx, {
-                type: 'line',
+                type: 'bar', // Bar charts are often better for accumulated values, but let's stick to line with fill
                 data: {
                     labels: labels,
                     datasets: [{
-                        label: `Hourly Rainfall (mm) - ${stationName}`,
+                        label: `6-Hourly Accumulated Rainfall (mm) - ${stationName}`,
                         data: rainData,
                         spanGaps: false, // Ensures a blank gap is drawn for null values
                         borderColor: '#21918c',
-                        backgroundColor: 'rgba(33, 145, 140, 0.2)',
+                        backgroundColor: 'rgba(33, 145, 140, 0.4)',
                         borderWidth: 2,
-                        pointRadius: 2,
+                        pointRadius: 3,
                         fill: true,
-                        tension: 0.2
+                        tension: 0.1
                     }]
                 },
                 options: {
@@ -489,7 +565,7 @@
                     },
                     scales: {
                         x: {
-                            title: { display: true, text: 'Time' },
+                            title: { display: true, text: 'Time (6-Hourly)' },
                             ticks: { maxTicksLimit: 12 }
                         },
                         y: {
