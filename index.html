@@ -45,21 +45,6 @@
             max-height: 100%;
         }
 
-        #time-display {
-            position: absolute;
-            top: 10px;
-            left: 20px;
-            background: rgba(255, 255, 255, 0.95);
-            border: 2px solid #ccc;
-            padding: 10px 15px;
-            z-index: 1000;
-            font-size: 15px;
-            font-weight: bold;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
-            border-radius: 5px;
-            color: #333;
-        }
-
         #legend-panel {
             position: absolute;
             top: 10px;
@@ -92,12 +77,22 @@
             font-weight: bold;
         }
 
+        /* Time display is now integrated inside the legend panel */
+        #time-display {
+            margin-top: 10px;
+            font-size: 14px;
+            font-weight: bold;
+            color: #222;
+            padding-top: 8px;
+            border-top: 1px dashed #ccc;
+        }
+
         #control-panel {
             position: absolute;
             top: 20px;
             right: 20px;
             width: 200px;
-            max-height: 60vh;
+            max-height: 70vh;
             background: white;
             border: 2px solid #ccc;
             z-index: 1000;
@@ -106,14 +101,18 @@
             box-shadow: 0 4px 6px rgba(0,0,0,0.3);
         }
 
-        #anim-panel {
+        .control-section {
             padding: 10px;
             border-bottom: 2px solid #eee;
             background: #f9f9f9;
             text-align: center;
         }
+
+        .control-section:last-child {
+            border-bottom: none;
+        }
         
-        #anim-panel button {
+        .control-section button {
             cursor: pointer;
             padding: 5px 10px;
             margin: 2px;
@@ -123,9 +122,16 @@
             border-radius: 3px;
         }
         
-        #anim-panel button:hover { background: #eee; }
+        .control-section button:hover { background: #eee; }
         #btn-play { background: #d4edda !important; font-weight: bold;}
         #btn-stop { background: #f8d7da !important; font-weight: bold;}
+        
+        /* Specific styling for the station toggle button */
+        #btn-toggle-stations {
+            background: #e2e3e5;
+            width: 90%;
+            font-weight: bold;
+        }
 
         #layer-panel {
             padding: 10px;
@@ -180,14 +186,13 @@
 <!-- SECURITY: Disable right click at the body level -->
 <body oncontextmenu="return false;">
 
-    <div id="time-display">Valid Time: Select a layer to start</div>
-
     <div id="map"></div>
 
     <div id="chart-container">
         <canvas id="rainfallChart"></canvas>
     </div>
 
+    <!-- Legend Panel now also contains the Valid Time -->
     <div id="legend-panel">
         <strong style="font-size: 14px; display: block;">Total Precipitation (kg m⁻²)</strong>
         <div class="legend-gradient"></div>
@@ -198,15 +203,23 @@
             <span>105</span>
             <span>140</span>
         </div>
+        <div id="time-display">Valid Time: Select a layer to start</div>
     </div>
 
     <div id="control-panel">
-        <div id="anim-panel">
+        <div class="control-section">
             <div style="font-size: 13px; margin-bottom: 5px; font-weight: bold;">Animation Controls</div>
             <button id="btn-play">Play</button>
             <button id="btn-stop">Stop</button>
             <button id="btn-reset">Reset</button>
         </div>
+        
+        <!-- New Station Control Section -->
+        <div class="control-section">
+            <div style="font-size: 13px; margin-bottom: 5px; font-weight: bold;">Station Data</div>
+            <button id="btn-toggle-stations">Hide Stations</button>
+        </div>
+
         <div id="layer-panel">
             <h4>Satellite Layers</h4>
             <div class="grid-container" id="button-grid"></div>
@@ -264,6 +277,9 @@
             pane: 'markerPane' 
         }).addTo(map);
 
+        // Create a LayerGroup for the stations so we can toggle them on/off easily
+        var stationsLayerGroup = L.layerGroup().addTo(map);
+
         var baseUrl = "https://raw.githubusercontent.com/Nurizana/Satellite_WP_MIP/main/Data2/map_timestep_";
         var csvUrl = "https://raw.githubusercontent.com/Nurizana/Satellite_WP_MIP/main/Data3/Hourly_PMSS_202401_WCoordinate.csv";
         var colorScale = chroma.scale('viridis').domain([0, 140]);
@@ -282,7 +298,6 @@
 
         // Function to update the Time Display box
         function updateTimeDisplay(frameIndex) {
-            // Add hours (frameIndex) to the base date
             var frameDate = new Date(satelliteBaseDate.getTime() + frameIndex * 60 * 60 * 1000);
             
             var year = frameDate.getFullYear();
@@ -398,6 +413,20 @@
         document.getElementById('btn-stop').addEventListener('click', stopAnimation);
         document.getElementById('btn-reset').addEventListener('click', resetAnimation);
 
+        // Logic for the new Station Toggle Button
+        var btnToggleStations = document.getElementById('btn-toggle-stations');
+        btnToggleStations.addEventListener('click', function() {
+            if (map.hasLayer(stationsLayerGroup)) {
+                map.removeLayer(stationsLayerGroup);
+                btnToggleStations.innerText = "Show Stations";
+                btnToggleStations.style.background = "#fff";
+            } else {
+                map.addLayer(stationsLayerGroup);
+                btnToggleStations.innerText = "Hide Stations";
+                btnToggleStations.style.background = "#e2e3e5";
+            }
+        });
+
         var grid = document.getElementById('button-grid');
         for (let i = 0; i < totalFrames; i++) {
             let paddedNum = i.toString().padStart(3, '0');
@@ -441,10 +470,9 @@
                     
                     let timeStr = `${row['YEAR']}-${row['MTH'].padStart(2,'0')}-${row['DAY'].padStart(2,'0')} ${row['HOUR'].padStart(2,'0')}:00`;
                     
-                    // Modified to handle defective -99.9 values
                     let rainVal = parseFloat(row['RAIN']);
                     if (rainVal === -99.9) {
-                        rainVal = null; // null values will break the Chart.js line
+                        rainVal = null; 
                     } else {
                         rainVal = isNaN(rainVal) ? 0 : rainVal;
                     }
@@ -457,7 +485,8 @@
                     
                     if (isNaN(stnData.lat) || isNaN(stnData.lon)) continue; 
 
-                    let marker = L.marker([stnData.lat, stnData.lon]).addTo(map);
+                    // Add markers to the stationsLayerGroup instead of the map directly
+                    let marker = L.marker([stnData.lat, stnData.lon]).addTo(stationsLayerGroup);
                     marker.bindTooltip(stn); 
 
                     marker.on('click', function() {
@@ -475,10 +504,8 @@
             let hasNullInWindow = false;
 
             records.forEach(rec => {
-                // Parse date string (treating it as local to avoid timezone drift in formatting)
                 let d = new Date(rec.time.replace(' ', 'T'));
                 
-                // Find the start of the 6-hour window (0, 6, 12, 18)
                 let windowHour = Math.floor(d.getHours() / 6) * 6;
                 let windowStart = new Date(d);
                 windowStart.setHours(windowHour, 0, 0, 0);
@@ -488,7 +515,6 @@
                                   String(windowStart.getDate()).padStart(2, '0') + ' ' + 
                                   String(windowStart.getHours()).padStart(2, '0') + ':00';
 
-                // If moving to a new 6-hr window, push the previous one to our array
                 if (currentWindowStart !== null && currentWindowStart !== windowLabel) {
                     accumulated.push({
                         time: currentWindowStart,
@@ -501,7 +527,6 @@
                 
                 currentWindowStart = windowLabel;
 
-                // Add to sum, or flag the window if data is missing (-99.9/null)
                 if (rec.rain === null) {
                     hasNullInWindow = true;
                 } else {
@@ -509,7 +534,6 @@
                 }
             });
 
-            // Push the final window
             if (currentWindowStart !== null) {
                 accumulated.push({
                     time: currentWindowStart,
@@ -521,10 +545,8 @@
         }
 
         function generateChart(stationName, hourlyRecords) {
-            // Sort original records chronologically just in case
             hourlyRecords.sort((a, b) => new Date(a.time.replace(' ', 'T')) - new Date(b.time.replace(' ', 'T')));
             
-            // Process hourly data into 6-hour accumulation
             let sixHourlyRecords = aggregate6Hourly(hourlyRecords);
 
             let labels = sixHourlyRecords.map(r => r.time);
@@ -542,13 +564,13 @@
 
             let ctx = document.getElementById('rainfallChart').getContext('2d');
             chartInstance = new Chart(ctx, {
-                type: 'bar', // Bar charts are often better for accumulated values, but let's stick to line with fill
+                type: 'bar',
                 data: {
                     labels: labels,
                     datasets: [{
                         label: `6-Hourly Accumulated Rainfall (mm) - ${stationName}`,
                         data: rainData,
-                        spanGaps: false, // Ensures a blank gap is drawn for null values
+                        spanGaps: false, 
                         borderColor: '#21918c',
                         backgroundColor: 'rgba(33, 145, 140, 0.4)',
                         borderWidth: 2,
