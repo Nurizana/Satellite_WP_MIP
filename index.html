@@ -616,13 +616,38 @@
                     maintainAspectRatio: false,
                     plugins: {
                         legend: { position: 'top' },
-                        // ADDED: Tooltip configuration to hide the exact numerical value
+                        // ADDED: Customized Tooltip Configuration
                         tooltip: {
                             callbacks: {
+                                // Controls the header/title of the tooltip
+                                title: function(tooltipItems) {
+                                    let startTimeStr = tooltipItems[0].label; // e.g. '2024-01-01 06:00'
+                                    
+                                    // Treat string as UTC by appending 'Z', then parse Date
+                                    let startDateObj = new Date(startTimeStr.replace(' ', 'T') + ':00Z');
+                                    // Add 6 hours to find the end of the accumulation block
+                                    let endDateObj = new Date(startDateObj.getTime() + (6 * 60 * 60 * 1000));
+                                    
+                                    let formatTime = (d) => String(d.getUTCHours()).padStart(2, '0') + ':00';
+                                    let formatDate = (d) => `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
+                                    
+                                    let startD = formatDate(startDateObj);
+                                    let startT = formatTime(startDateObj);
+                                    let endD = formatDate(endDateObj);
+                                    let endT = formatTime(endDateObj);
+                                    
+                                    // Format multiline title for clarity
+                                    if (startD === endD) {
+                                        return `Date: ${startD}\nTime: ${startT} - ${endT} (UTC)`;
+                                    } else {
+                                        return `Start: ${startD} ${startT} (UTC)\nEnd: ${endD} ${endT} (UTC)`;
+                                    }
+                                },
+                                // Controls the main text of the tooltip (the label)
                                 label: function(context) {
-                                    // Extracts just the station name from the dataset label
+                                    // Extract the station name from the dataset string
                                     let station = context.dataset.label.split(' - ')[1] || 'Station';
-                                    return station + ': (Value Hidden)';
+                                    return `Station: ${station}`;
                                 }
                             }
                         }
