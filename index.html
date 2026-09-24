@@ -287,15 +287,46 @@
 
         // 2. 5-Degree Grid LayerGroup (Not added to map by default)
         var gridLayerGroup = L.layerGroup();
-        var gridStyle = { color: '#333', weight: 1, opacity: 0.4, dashArray: '4, 4' };
+        
+        // Base style for the grid (Yellow and thicker)
+        var defaultGridStyle = { color: 'yellow', weight: 3, opacity: 0.6, dashArray: '4, 4' };
 
         // Generate Longitude lines (Meridians) every 5 degrees
         for (let lon = -180; lon <= 180; lon += 5) {
-            L.polyline([[ -90, lon ], [ 90, lon ]], gridStyle).addTo(gridLayerGroup);
+            let lonLine = L.polyline([[ -90, lon ], [ 90, lon ]], defaultGridStyle);
+            
+            // Format label text nicely
+            let labelText = lon === 0 ? "0°" : (lon > 0 ? lon + "° E" : Math.abs(lon) + "° W");
+            lonLine.bindTooltip("Longitude: " + labelText, { sticky: true });
+            
+            // Add hover effects for interactivity
+            lonLine.on('mouseover', function(e) {
+                this.setStyle({ weight: 7, opacity: 1 }); // Make it significantly thicker on hover
+            });
+            lonLine.on('mouseout', function(e) {
+                this.setStyle(defaultGridStyle); // Revert to base style
+            });
+            
+            lonLine.addTo(gridLayerGroup);
         }
+        
         // Generate Latitude lines (Parallels) every 5 degrees
         for (let lat = -90; lat <= 90; lat += 5) {
-            L.polyline([[ lat, -180 ], [ lat, 180 ]], gridStyle).addTo(gridLayerGroup);
+            let latLine = L.polyline([[ lat, -180 ], [ lat, 180 ]], defaultGridStyle);
+            
+            // Format label text nicely
+            let labelText = lat === 0 ? "Equator (0°)" : (lat > 0 ? lat + "° N" : Math.abs(lat) + "° S");
+            latLine.bindTooltip("Latitude: " + labelText, { sticky: true });
+            
+            // Add hover effects for interactivity
+            latLine.on('mouseover', function(e) {
+                this.setStyle({ weight: 7, opacity: 1 }); // Make it significantly thicker on hover
+            });
+            latLine.on('mouseout', function(e) {
+                this.setStyle(defaultGridStyle); // Revert to base style
+            });
+            
+            latLine.addTo(gridLayerGroup);
         }
 
         var baseUrl = "https://raw.githubusercontent.com/Nurizana/Satellite_WP_MIP/main/Data2/map_timestep_";
@@ -616,16 +647,11 @@
                     maintainAspectRatio: false,
                     plugins: {
                         legend: { position: 'top' },
-                        // ADDED: Customized Tooltip Configuration
                         tooltip: {
                             callbacks: {
-                                // Controls the header/title of the tooltip
                                 title: function(tooltipItems) {
-                                    let startTimeStr = tooltipItems[0].label; // e.g. '2024-01-01 06:00'
-                                    
-                                    // Treat string as UTC by appending 'Z', then parse Date
+                                    let startTimeStr = tooltipItems[0].label; 
                                     let startDateObj = new Date(startTimeStr.replace(' ', 'T') + ':00Z');
-                                    // Add 6 hours to find the end of the accumulation block
                                     let endDateObj = new Date(startDateObj.getTime() + (6 * 60 * 60 * 1000));
                                     
                                     let formatTime = (d) => String(d.getUTCHours()).padStart(2, '0') + ':00';
@@ -636,16 +662,13 @@
                                     let endD = formatDate(endDateObj);
                                     let endT = formatTime(endDateObj);
                                     
-                                    // Format multiline title for clarity
                                     if (startD === endD) {
                                         return `Date: ${startD}\nTime: ${startT} - ${endT} (UTC)`;
                                     } else {
                                         return `Start: ${startD} ${startT} (UTC)\nEnd: ${endD} ${endT} (UTC)`;
                                     }
                                 },
-                                // Controls the main text of the tooltip (the label)
                                 label: function(context) {
-                                    // Extract the station name from the dataset string
                                     let station = context.dataset.label.split(' - ')[1] || 'Station';
                                     return `Station: ${station}`;
                                 }
