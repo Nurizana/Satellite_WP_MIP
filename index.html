@@ -615,7 +615,17 @@
                     responsive: true,
                     maintainAspectRatio: false,
                     plugins: {
-                        legend: { position: 'top' }
+                        legend: { position: 'top' },
+                        // ADDED: Tooltip configuration to hide the exact numerical value
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    // Extracts just the station name from the dataset label
+                                    let station = context.dataset.label.split(' - ')[1] || 'Station';
+                                    return station + ': (Value Hidden)';
+                                }
+                            }
+                        }
                     },
                     scales: {
                         x: {
