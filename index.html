@@ -77,7 +77,6 @@
             font-weight: bold;
         }
 
-        /* Time display is now integrated inside the legend panel */
         #time-display {
             margin-top: 10px;
             font-size: 14px;
@@ -91,30 +90,61 @@
             position: absolute;
             top: 20px;
             right: 20px;
-            width: 200px;
-            max-height: 70vh;
+            width: 220px;
+            max-height: 80vh;
             background: white;
             border: 2px solid #ccc;
             z-index: 1000;
             display: flex;
             flex-direction: column;
             box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+            overflow-y: auto;
+        }
+
+        /* Accordion Styles */
+        .accordion-item {
+            border-bottom: 2px solid #eee;
+        }
+        .accordion-item:last-child {
+            border-bottom: none;
+        }
+        .accordion-header {
+            background: #f1f1f1;
+            padding: 10px;
+            font-size: 14px;
+            font-weight: bold;
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            transition: background 0.2s;
+        }
+        .accordion-header:hover {
+            background: #e2e2e2;
+        }
+        .arrow {
+            transition: transform 0.3s ease;
+            font-size: 12px;
+        }
+        .accordion-content {
+            display: block;
+            background: #f9f9f9;
+        }
+        .accordion-item.collapsed .accordion-content {
+            display: none;
+        }
+        .accordion-item.collapsed .arrow {
+            transform: rotate(-90deg);
         }
 
         .control-section {
             padding: 10px;
-            border-bottom: 2px solid #eee;
-            background: #f9f9f9;
             text-align: center;
         }
 
-        .control-section:last-child {
-            border-bottom: none;
-        }
-        
         .control-section button {
             cursor: pointer;
-            padding: 5px 10px;
+            padding: 6px 12px;
             margin: 2px;
             font-size: 12px;
             border: 1px solid #999;
@@ -126,7 +156,6 @@
         #btn-play { background: #d4edda !important; font-weight: bold;}
         #btn-stop { background: #f8d7da !important; font-weight: bold;}
         
-        /* Specific styling for toggle buttons */
         .btn-toggle {
             width: 90%;
             font-weight: bold;
@@ -139,14 +168,9 @@
 
         #layer-panel {
             padding: 10px;
+            max-height: 250px;
             overflow-y: auto;
-        }
-
-        #layer-panel h4 {
-            margin-top: 0;
-            margin-bottom: 10px;
-            text-align: center;
-            font-size: 14px;
+            border-top: 1px solid #ddd;
         }
 
         .grid-container {
@@ -178,7 +202,6 @@
             cursor: wait;
         }
 
-        /* SECURITY: Completely blank out the page if the user tries to print */
         @media print {
             html, body {
                 display: none !important;
@@ -187,7 +210,6 @@
         }
     </style>
 </head>
-<!-- SECURITY: Disable right click at the body level -->
 <body oncontextmenu="return false;">
 
     <div id="map"></div>
@@ -196,7 +218,6 @@
         <canvas id="rainfallChart"></canvas>
     </div>
 
-    <!-- Legend Panel now also contains the Valid Time -->
     <div id="legend-panel">
         <strong style="font-size: 14px; display: block;">Total Precipitation (kg m⁻²)</strong>
         <div class="legend-gradient"></div>
@@ -210,25 +231,50 @@
         <div id="time-display">Valid Time: Select a layer to start</div>
     </div>
 
+    <!-- Accordion Control Panel -->
     <div id="control-panel">
-        <div class="control-section">
-            <div style="font-size: 13px; margin-bottom: 5px; font-weight: bold;">Animation Controls</div>
-            <button id="btn-play">Play</button>
-            <button id="btn-stop">Stop</button>
-            <button id="btn-reset">Reset</button>
-        </div>
         
-        <!-- Consolidated Map Overlays Section -->
-        <div class="control-section">
-            <div style="font-size: 13px; margin-bottom: 5px; font-weight: bold;">Map Overlays</div>
-            <button id="btn-toggle-stations" class="btn-toggle">Hide Stations</button>
-            <button id="btn-toggle-grid" class="btn-toggle">Show 5° Grid</button>
+        <!-- Satellite Layers Section -->
+        <div class="accordion-item">
+            <div class="accordion-header">
+                Satellite Layers <span class="arrow">&#9660;</span>
+            </div>
+            <div class="accordion-content">
+                <div class="control-section">
+                    <button id="btn-play">Play</button>
+                    <button id="btn-stop">Stop</button>
+                    <button id="btn-reset">Reset</button>
+                </div>
+                <div id="layer-panel">
+                    <div class="grid-container" id="button-grid"></div>
+                </div>
+            </div>
         </div>
 
-        <div id="layer-panel">
-            <h4>Satellite Layers</h4>
-            <div class="grid-container" id="button-grid"></div>
+        <!-- Map Overlays Section -->
+        <div class="accordion-item">
+            <div class="accordion-header">
+                Map Overlays <span class="arrow">&#9660;</span>
+            </div>
+            <div class="accordion-content">
+                <div class="control-section">
+                    <button id="btn-toggle-grid" class="btn-toggle">Show 5° Grid</button>
+                </div>
+            </div>
         </div>
+
+        <!-- Stations Section -->
+        <div class="accordion-item">
+            <div class="accordion-header">
+                Stations <span class="arrow">&#9660;</span>
+            </div>
+            <div class="accordion-content">
+                <div class="control-section">
+                    <button id="btn-toggle-stations" class="btn-toggle">Hide Stations</button>
+                </div>
+            </div>
+        </div>
+
     </div>
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -267,6 +313,16 @@
         });
 
         // ==========================================
+        // UI ACCORDION LOGIC
+        // ==========================================
+        document.querySelectorAll('.accordion-header').forEach(header => {
+            header.addEventListener('click', () => {
+                const item = header.parentElement;
+                item.classList.toggle('collapsed');
+            });
+        });
+
+        // ==========================================
         // MAP & DATA LOGIC
         // ==========================================
 
@@ -288,44 +344,23 @@
         // 2. 5-Degree Grid LayerGroup (Not added to map by default)
         var gridLayerGroup = L.layerGroup();
         
-        // Base style for the grid (Yellow and thicker)
         var defaultGridStyle = { color: 'yellow', weight: 3, opacity: 0.6, dashArray: '4, 4' };
 
-        // Generate Longitude lines (Meridians) every 5 degrees
         for (let lon = -180; lon <= 180; lon += 5) {
             let lonLine = L.polyline([[ -90, lon ], [ 90, lon ]], defaultGridStyle);
-            
-            // Format label text nicely
             let labelText = lon === 0 ? "0°" : (lon > 0 ? lon + "° E" : Math.abs(lon) + "° W");
             lonLine.bindTooltip("Longitude: " + labelText, { sticky: true });
-            
-            // Add hover effects for interactivity
-            lonLine.on('mouseover', function(e) {
-                this.setStyle({ weight: 7, opacity: 1 }); // Make it significantly thicker on hover
-            });
-            lonLine.on('mouseout', function(e) {
-                this.setStyle(defaultGridStyle); // Revert to base style
-            });
-            
+            lonLine.on('mouseover', function(e) { this.setStyle({ weight: 7, opacity: 1 }); });
+            lonLine.on('mouseout', function(e) { this.setStyle(defaultGridStyle); });
             lonLine.addTo(gridLayerGroup);
         }
         
-        // Generate Latitude lines (Parallels) every 5 degrees
         for (let lat = -90; lat <= 90; lat += 5) {
             let latLine = L.polyline([[ lat, -180 ], [ lat, 180 ]], defaultGridStyle);
-            
-            // Format label text nicely
             let labelText = lat === 0 ? "Equator (0°)" : (lat > 0 ? lat + "° N" : Math.abs(lat) + "° S");
             latLine.bindTooltip("Latitude: " + labelText, { sticky: true });
-            
-            // Add hover effects for interactivity
-            latLine.on('mouseover', function(e) {
-                this.setStyle({ weight: 7, opacity: 1 }); // Make it significantly thicker on hover
-            });
-            latLine.on('mouseout', function(e) {
-                this.setStyle(defaultGridStyle); // Revert to base style
-            });
-            
+            latLine.on('mouseover', function(e) { this.setStyle({ weight: 7, opacity: 1 }); });
+            latLine.on('mouseout', function(e) { this.setStyle(defaultGridStyle); });
             latLine.addTo(gridLayerGroup);
         }
 
@@ -335,8 +370,6 @@
         var layerCache = {}; 
         var totalFrames = 124;
 
-        // Satellite Time settings
-        // Frame 0 starts at 2024-01-01 06:00 UTC ("Z")
         var satelliteBaseDate = new Date("2024-01-01T06:00:00Z");
 
         var isPlaying = false;
@@ -345,17 +378,12 @@
         var animTimeout = null;
         var chartInstance = null;
 
-        // Function to update the Time Display box
         function updateTimeDisplay(frameIndex) {
-            // Multiply frameIndex by 6 hours
             var frameDate = new Date(satelliteBaseDate.getTime() + (frameIndex * 6 * 60 * 60 * 1000));
-            
-            // Using getUTC methods to ensure time displays exactly as Z (UTC) time 
             var year = frameDate.getUTCFullYear();
             var month = String(frameDate.getUTCMonth() + 1).padStart(2, '0');
             var day = String(frameDate.getUTCDate()).padStart(2, '0');
             var hours = String(frameDate.getUTCHours()).padStart(2, '0');
-            
             var timeString = `${year}-${month}-${day} ${hours}:00Z`;
             document.getElementById('time-display').innerText = "Valid Time: " + timeString;
         }
@@ -464,7 +492,6 @@
         document.getElementById('btn-stop').addEventListener('click', stopAnimation);
         document.getElementById('btn-reset').addEventListener('click', resetAnimation);
 
-        // Logic for the Station Toggle Button
         var btnToggleStations = document.getElementById('btn-toggle-stations');
         btnToggleStations.addEventListener('click', function() {
             if (map.hasLayer(stationsLayerGroup)) {
@@ -478,7 +505,6 @@
             }
         });
 
-        // Logic for the Grid Toggle Button
         var btnToggleGrid = document.getElementById('btn-toggle-grid');
         btnToggleGrid.addEventListener('click', function() {
             if (map.hasLayer(gridLayerGroup)) {
